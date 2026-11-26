@@ -19,7 +19,13 @@ else:
     st.error("jra_races.csv が見つかりません。GitHubにアップロードしてください。")
     st.stop()
 
-# 1. 開催場とレースの選択（レース番号順にソート）
+# レース番号列がない古いCSVでも自動補完して順番通りに並べる
+if "レース番号" not in all_df.columns:
+    all_df = all_df.assign(
+        レース番号=all_df.get("レース").astype(str).str.extract(r"(\d+)").fillna(99).astype(int)
+    )
+
+# 1. 開催場とレースの選択（1R〜12R順）
 col_r1, col_r2 = st.columns(2)
 with col_r1:
     kaisai_list = tuple(all_df.get("開催場").unique())
@@ -33,7 +39,7 @@ st.subheader(f"📍 {selected_kaisai} {selected_race}")
 
 race_df = sub_df.query("レース == @selected_race").sort_values("馬番").copy()
 
-# 騎手勝率のマッピング（日本語・英語表記の両方に対応）
+# 騎手勝率のマッピング
 top_jockeys = {
     "ルメ": 0.24, "Lemaire": 0.24,
     "川田": 0.23, "Kawada": 0.23,
@@ -70,7 +76,7 @@ state_key = f"df_{selected_kaisai}_{selected_race}"
 if state_key not in st.session_state:
     st.session_state[state_key] = race_df
 
-curr_df = st.session_state[state_key].copy()
+curr_df = st.session_state.get(state_key).copy()
 
 # AIスコア計算
 features = ("枠番", "馬番", "単勝オッズ", "斤量", "前走着順", "前走上がり3F順位", "同コース複勝率", "騎手勝率")
@@ -104,11 +110,12 @@ with tab1:
 
 with tab2:
     st.subheader("🤖 AI自動提案フォーメーション")
-    if len(ranked_df) >= 4:
-        honmei = ranked_df.iloc
-        taikou = ranked_df.iloc
-        tanana = ranked_df.iloc
-        renka = ranked_df.iloc
+    records = ranked_df.to_dict("records")
+    if len(records) >= 4:
+        honmei = records.pop(0)
+        taikou = records.pop(0)
+        tanana = records.pop(0)
+        renka = records.pop(0)
         st.success(f"**軸馬（◎）：{int(honmei.get('馬番'))}番 {honmei.get('馬名')}**（{score_col}: {honmei.get(score_col)}）")
         st.write(f"**相手（○▲△）：** {int(taikou.get('馬番'))}番 {taikou.get('馬名')} / {int(tanana.get('馬番'))}番 {tanana.get('馬名')} / {int(renka.get('馬番'))}番 {renka.get('馬名')}")
         st.info(f"**推奨馬連（3点）：** {int(honmei.get('馬番'))} － {int(taikou.get('馬番'))}, {int(tanana.get('馬番'))}, {int(renka.get('馬番'))}")
@@ -128,7 +135,8 @@ with tab3:
 
 with tab4:
     st.write("リアルタイムのオッズや前走成績を書き換えて再計算できます。")
-    edited = st.data_editor(curr_df.loc[:, ("枠番", "馬番", "馬名", "騎手", "斤量", "単勝オッズ", "前走着順", "前走上がり3F順位", "同コース複勝率", "騎手勝率")], use_container_width=True, hide_index=True)
+    edit_cols = ("枠番", "馬番", "馬名", "騎手", "斤量", "単勝オッズ", "前走着順", "前走上がり3F順位", "同コース複勝率", "騎手勝率")
+    edited = st.data_editor(curr_df.loc[:, edit_cols], use_container_width=True, hide_index=True)
     if st.button("🔄 AIスコアを再計算する", type="primary"):
         st.session_state[state_key] = edited
         st.rerun()
