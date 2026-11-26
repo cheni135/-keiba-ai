@@ -13,33 +13,40 @@ def load_ai_model():
 
 model = load_ai_model()
 
-# JRA公式データCSVの読み込み
 if os.path.exists("jra_races.csv"):
     all_df = pd.read_csv("jra_races.csv")
 else:
     st.error("jra_races.csv が見つかりません。GitHubにアップロードしてください。")
     st.stop()
 
-# 1. 開催場とレースの選択（本物のJRAデータから自動生成）
+# 1. 開催場とレースの選択（レース番号順にソート）
 col_r1, col_r2 = st.columns(2)
 with col_r1:
     kaisai_list = tuple(all_df.get("開催場").unique())
     selected_kaisai = st.selectbox("開催場を選択", kaisai_list)
 with col_r2:
-    race_list = tuple(all_df.query("開催場 == @selected_kaisai").get("レース").unique())
+    sub_df = all_df.query("開催場 == @selected_kaisai").sort_values("レース番号")
+    race_list = tuple(sub_df.get("レース").unique())
     selected_race = st.selectbox("レースを選択", race_list)
 
 st.subheader(f"📍 {selected_kaisai} {selected_race}")
 
-# 選択されたレースの出走馬を抽出
-race_df = all_df.query("開催場 == @selected_kaisai and レース == @selected_race").copy()
+race_df = sub_df.query("レース == @selected_race").sort_values("馬番").copy()
 
-# AI予測に必要な統計特徴量を自動補完（第2段階で実データ学習に強化）
-np.random.seed(len(race_df) + int(race_df.get("馬番").sum()))
-n = len(race_df)
+# 騎手勝率のマッピング（日本語・英語表記の両方に対応）
+top_jockeys = {
+    "ルメ": 0.24, "Lemaire": 0.24,
+    "川田": 0.23, "Kawada": 0.23,
+    "モレイラ": 0.25, "Moreira": 0.25,
+    "戸崎": 0.16, "Tosaki": 0.16,
+    "横山": 0.15, "Yokoyama": 0.15,
+    "坂井": 0.16, "Sakai": 0.16,
+    "武豊": 0.15, "Take": 0.15,
+    "デムー": 0.18, "Demuro": 0.18,
+    "松山": 0.15, "Matsuyama": 0.15,
+    "鮫島": 0.13, "Sameshima": 0.13
+}
 
-# 騎手勝率の簡易マッピング
-top_jockeys = {"ルメ": 0.24, "川田": 0.23, "モレイラ": 0.25, "戸崎": 0.16, "横山": 0.15, "坂井": 0.16, "武豊": 0.15, "デムー": 0.18}
 def get_jockey_rate(name):
     for k, v in top_jockeys.items():
         if k in str(name):
@@ -47,18 +54,18 @@ def get_jockey_rate(name):
     return 0.10
 
 j_rates = tuple(get_jockey_rate(j) for j in race_df.get("騎手"))
-# 仮オッズ・前走指標（画面で編集可能）
-est_odds = np.round(np.clip(2.0 / np.array(j_rates) + np.random.uniform(-2, 8, n), 1.5, 99.9), 1)
+np.random.seed(len(race_df) + int(race_df.get("馬番").sum()))
+n = len(race_df)
+est_odds = np.round(np.clip(2.0 / np.array(j_rates) + np.random.uniform(-1.5, 7.5, n), 1.5, 99.9), 1)
 
 race_df = race_df.assign(
     単勝オッズ=est_odds,
-    前走着順=np.random.randint(1, 10, n),
-    前走上がり3F順位=np.random.randint(1, 10, n),
+    前走着順=np.random.randint(1, 9, n),
+    前走上がり3F順位=np.random.randint(1, 9, n),
     同コース複勝率=np.round(np.array(j_rates) * 1.8, 2),
     騎手勝率=j_rates
 )
 
-# セッション状態で編集値を保持
 state_key = f"df_{selected_kaisai}_{selected_race}"
 if state_key not in st.session_state:
     st.session_state[state_key] = race_df
@@ -98,10 +105,10 @@ with tab1:
 with tab2:
     st.subheader("🤖 AI自動提案フォーメーション")
     if len(ranked_df) >= 4:
-        honmei = ranked_df.iloc[0]
-        taikou = ranked_df.iloc[1]
-        tanana = ranked_df.iloc[2]
-        renka = ranked_df.iloc[3]
+        honmei = ranked_df.iloc
+        taikou = ranked_df.iloc
+        tanana = ranked_df.iloc
+        renka = ranked_df.iloc
         st.success(f"**軸馬（◎）：{int(honmei.get('馬番'))}番 {honmei.get('馬名')}**（{score_col}: {honmei.get(score_col)}）")
         st.write(f"**相手（○▲△）：** {int(taikou.get('馬番'))}番 {taikou.get('馬名')} / {int(tanana.get('馬番'))}番 {tanana.get('馬名')} / {int(renka.get('馬番'))}番 {renka.get('馬名')}")
         st.info(f"**推奨馬連（3点）：** {int(honmei.get('馬番'))} － {int(taikou.get('馬番'))}, {int(tanana.get('馬番'))}, {int(renka.get('馬番'))}")
