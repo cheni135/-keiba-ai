@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import glob
 import os
 
 st.set_page_config(page_title="自分専用 競馬AI", layout="wide")
@@ -13,13 +14,17 @@ def load_ai_model():
 
 model = load_ai_model()
 
-if os.path.exists("jra_races.csv"):
-    all_df = pd.read_csv("jra_races.csv")
-else:
-    st.error("jra_races.csv が見つかりません。GitHubにアップロードしてください。")
+# jra_races で始まるファイルのうち、一番新しい（番号が大きい）ファイルを自動検出
+csv_files = sorted(glob.glob("jra_races*"))
+if not csv_files:
+    st.error("jra_races データファイルが見つかりません。GitHubにアップロードしてください。")
     st.stop()
 
-# レース番号列がない古いCSVでも自動補完して順番通りに並べる
+latest_csv = csv_files.pop()
+st.caption(f"📂 読込データ: {latest_csv}")
+all_df = pd.read_csv(latest_csv)
+
+# レース番号列の自動補完
 if "レース番号" not in all_df.columns:
     all_df = all_df.assign(
         レース番号=all_df.get("レース").astype(str).str.extract(r"(\d+)").fillna(99).astype(int)
@@ -72,7 +77,7 @@ race_df = race_df.assign(
     騎手勝率=j_rates
 )
 
-state_key = f"df_{selected_kaisai}_{selected_race}"
+state_key = f"df_{latest_csv}_{selected_kaisai}_{selected_race}"
 if state_key not in st.session_state:
     st.session_state[state_key] = race_df
 
