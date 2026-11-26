@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import re
-import time
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="自分専用 競馬AI", layout="wide")
@@ -12,9 +11,9 @@ st.title("🏇 自分専用 競馬AI予想")
 # 開催日リスト（直近の土日を含む前後1週間を生成）
 today = datetime.now()
 date_options = {}
-for i in range(-4, 5):
+for i in range(-5, 6):
     d = today + timedelta(days=i)
-    if d.weekday() in:  # 土曜(5)・日曜(6)のみ抽出
+    if d.weekday() in:
         label = d.strftime("%Y/%m/%d") + ("(土)" if d.weekday() == 5 else "(日)")
         date_options[label] = d.strftime("%Y%m%d")
 
@@ -26,7 +25,7 @@ if not date_options:
 selected_date_label = st.selectbox("開催日を選択", list(date_options.keys()))
 kaisai_date = date_options[selected_date_label]
 
-# レース一覧を取得する関数（キャッシュして高速化）
+# レース一覧を取得する関数
 @st.cache_data(ttl=3600)
 def get_race_list(date_str):
     url = f"https://netkeiba.com{date_str}"
@@ -40,7 +39,8 @@ def get_race_list(date_str):
         place_tag = dl.select_one(".RaceList_DataTitle")
         if not place_tag:
             continue
-        place_name = place_tag.text.strip().split()[1] if len(place_tag.text.strip().split()) > 1 else place_tag.text.strip()
+        parts = place_tag.text.strip().split()
+        place_name = parts[1] if len(parts) > 1 else place_tag.text.strip()
         races[place_name] = []
         
         for li in dl.select("li.RaceList_DataItem"):
@@ -65,7 +65,7 @@ def get_shutuba(race_id):
     rows = []
     for tr in soup.select("tr.HorseList"):
         tds = tr.select("td")
-        if len(tds) < 10:
+        if len(tds) < 11:
             continue
         waku = tds[0].text.strip()
         umaban = tds[1].text.strip()
@@ -117,7 +117,7 @@ else:
         df = get_shutuba(selected_race_id)
 
     if df.empty:
-        st.info("出馬表データがまだ公開されていません（木曜夕方以降に公開されます）。")
+        st.info("出馬表データがまだ公開されていません（木曜夕方〜金曜に公開されます）。")
     else:
         # 2. スコアモード切替
         mode = st.radio(
@@ -158,5 +158,3 @@ else:
             st.write("枠順別の平均AIスコア")
             waku_df = df.groupby("枠")["表示スコア"].mean().reset_index()
             st.bar_chart(waku_df.set_index("枠"))
-
-    
